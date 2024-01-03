@@ -1,89 +1,77 @@
-import { ActionPanel, Action, List } from "@raycast/api";
-import { useFetch, Response } from "@raycast/utils";
-import { useState } from "react";
-import { URLSearchParams } from "node:url";
+import { Action, ActionPanel, Icon, List, confirmAlert, getPreferenceValues } from "@raycast/api";
+import { glob } from "fast-glob";
+import { useCachedPromise } from "@raycast/utils";
+import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { execSync } from "node:child_process";
 
 export default function Command() {
-  const [searchText, setSearchText] = useState("");
-  const { data, isLoading } = useFetch(
-    "https://api.npms.io/v2/search?" +
-      // send the search query to the API
-      new URLSearchParams({ q: searchText.length === 0 ? "@raycast/api" : searchText }),
-    {
-      parseResponse: parseFetchResponse,
-    },
-  );
+  const preference = getPreferenceValues<Preferences.Index>();
+
+  const editor = preference.editor!;
+  const directories = [preference.root];
+  const ignores = preference.ignores?.split(",").map((d) => d.trim());
+
+  if (preference.includes) {
+    directories.push(...preference.includes.split(",").map((d) => d.trim()));
+  }
+
+  const state = useCachedPromise(() => scanDirectories(directories, ignores), [], { execute: true });
+
+  async function handleDeleteRepo(repo: string) {
+    if (
+      await confirmAlert({
+        icon: Icon.Warning,
+        title: "Confirm",
+        message: `Delete "${repo}"?`,
+      })
+    ) {
+      execSync(`rm -rf ${repo}`, { encoding: "utf-8" });
+      state.revalidate();
+    }
+  }
 
   return (
-    <List
-      isLoading={isLoading}
-      onSearchTextChange={setSearchText}
-      searchBarPlaceholder="Search npm packages..."
-      throttle
-    >
-      <List.Section title="Results" subtitle={data?.length + ""}>
-        {data?.map((searchResult) => <SearchListItem key={searchResult.name} searchResult={searchResult} />)}
-      </List.Section>
+    <List isLoading={state.isLoading}>
+      {state.data?.map((repo) => (
+        <List.Item
+          title={repo.split("/").pop()!}
+          accessories={[{ text: dirname(repo) }]}
+          key={repo}
+          actions={
+            <ActionPanel>
+              <Action.Open target={repo} application={editor} title={`Open in ${editor.name}`} />
+              <Action.Open target={repo} application="Finder" title="Open in Finder" />
+              <Action
+                title="Delete"
+                icon={Icon.Trash}
+                onAction={() => handleDeleteRepo(repo)}
+                shortcut={{ modifiers: ["cmd"], key: "d" }}
+              />
+            </ActionPanel>
+          }
+        />
+      ))}
     </List>
   );
 }
 
-function SearchListItem({ searchResult }: { searchResult: SearchResult }) {
-  return (
-    <List.Item
-      title={searchResult.name}
-      subtitle={searchResult.description}
-      accessories={[{ text: searchResult.username }]}
-      actions={
-        <ActionPanel>
-          <ActionPanel.Section>
-            <Action.OpenInBrowser title="Open in Browser" url={searchResult.url} />
-          </ActionPanel.Section>
-          <ActionPanel.Section>
-            <Action.CopyToClipboard
-              title="Copy Install Command"
-              content={`npm install ${searchResult.name}`}
-              shortcut={{ modifiers: ["cmd"], key: "." }}
-            />
-          </ActionPanel.Section>
-        </ActionPanel>
-      }
-    />
-  );
-}
+async function findRepos(root: string, ignores: string[]) {
+  const cwd = root.replace(/^~/, homedir());
 
-/** Parse the response from the fetch query into something we can display */
-async function parseFetchResponse(response: Response) {
-  const json = (await response.json()) as
-    | {
-        results: {
-          package: {
-            name: string;
-            description?: string;
-            publisher?: { username: string };
-            links: { npm: string };
-          };
-        }[];
-      }
-    | { code: string; message: string };
-
-  if (!response.ok || "message" in json) {
-    throw new Error("message" in json ? json.message : response.statusText);
-  }
-
-  return json.results.map((result) => {
-    return {
-      name: result.package.name,
-      description: result.package.description,
-      username: result.package.publisher?.username,
-      url: result.package.links.npm,
-    } as SearchResult;
+  const files = await glob("./**/.git", {
+    cwd,
+    absolute: true,
+    deep: 5,
+    onlyDirectories: true,
+    ignore: [...ignores],
   });
+
+  return files.map((file) => dirname(file).replace(homedir(), "~"));
 }
 
-interface SearchResult {
-  name: string;
-  description?: string;
-  username?: string;
-  url: string;
+async function scanDirectories(roots: string[], ignores: string[] = []) {
+  const repos = await Promise.all(roots.map(async (path) => await findRepos(path, ignores)));
+
+  return repos.flat();
 }

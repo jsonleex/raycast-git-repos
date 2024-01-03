@@ -1,3 +1,3 @@
-# Repo Manager
+# Git Repos
 
-This extension works for local Repo Management
+Manage your local git repos in Raycast.

@@ -1,25 +1,19 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "workspace-manager",
-  "title": "Workspace Manager",
-  "description": "This extension works for local workspace management",
+  "name": "git-repos",
+  "title": "Git Repos",
+  "description": "Manage your local git repos in Raycast.",
   "icon": "command-icon.png",
   "author": "leex",
+  "version": "0.0.0",
   "categories": [
     "Developer Tools"
   ],
   "license": "MIT",
-  "commands": [
-    {
-      "name": "index",
-      "title": "Workspace Manager",
-      "description": "Template for showing typeahead search with network results.",
-      "mode": "view"
-    }
-  ],
   "dependencies": {
     "@raycast/api": "^1.64.4",
-    "@raycast/utils": "^1.4.8"
+    "@raycast/utils": "^1.4.8",
+    "fast-glob": "^3.3.2"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^1.0.6",
@@ -35,5 +29,55 @@
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
     "publish": "npx @raycast/api@latest publish"
-  }
+  },
+  "preferences": [
+    {
+      "type": "directory",
+      "name": "root",
+      "required": true,
+      "title": "Root Directory",
+      "description": "The root directory for local repos. Eg: ~/repos",
+      "placeholder": "The root directory for local repos. Eg: ~/repos"
+    },
+    {
+      "type": "textfield",
+      "name": "includes",
+      "required": false,
+      "title": "Custom Directories",
+      "description": "The include directories to scan. Eg: ~/works,~/forks",
+      "placeholder": "The include directories to scan. Eg: ~/works,~/forks"
+    },
+    {
+      "type": "textfield",
+      "name": "ignores",
+      "required": false,
+      "default": "**node_modules**",
+      "title": "Ignore Directories pattern",
+      "description": "The ignore directories pattern. Eg: **node_modules**,**extensions**",
+      "placeholder": "The ignore directories pattern. Eg: **node_modules**,**extensions**"
+    },
+    {
+      "type": "appPicker",
+      "name": "editor",
+      "required": true,
+      "default": "com.microsoft.VSCode",
+      "title": "Default Editor",
+      "description": "The default editor to open local git repos. Eg: VSCode",
+      "placeholder": "The default editor to open local git repos. Eg: VSCode"
+    }
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Repos",
+      "description": "Show local git repos",
+      "mode": "view"
+    },
+    {
+      "name": "clone",
+      "title": "Clone",
+      "description": "Clone a repo to local",
+      "mode": "view"
+    }
+  ]
 }
