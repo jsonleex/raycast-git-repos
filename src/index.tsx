@@ -11,7 +11,7 @@ export default function Command() {
       new URLSearchParams({ q: searchText.length === 0 ? "@raycast/api" : searchText }),
     {
       parseResponse: parseFetchResponse,
-    }
+    },
   );
 
   return (
@@ -22,9 +22,7 @@ export default function Command() {
       throttle
     >
       <List.Section title="Results" subtitle={data?.length + ""}>
-        {data?.map((searchResult) => (
-          <SearchListItem key={searchResult.name} searchResult={searchResult} />
-        ))}
+        {data?.map((searchResult) => <SearchListItem key={searchResult.name} searchResult={searchResult} />)}
       </List.Section>
     </List>
   );
