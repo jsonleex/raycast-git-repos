@@ -1,20 +1,20 @@
 import {
   Action,
   ActionPanel,
-  Form,
   Clipboard,
+  Detail,
+  Form,
+  Icon,
+  Toast,
   getPreferenceValues,
   showToast,
-  Toast,
-  Detail,
-  Icon,
   useNavigation,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
-import { join } from "node:path";
+import {} from "@raycast/utils";
+import { getDirectory, runCommand } from "./utils";
+import { useState } from "react";
 import { existsSync, readFileSync } from "node:fs";
-import { promisify } from "node:util";
-import { exec } from "node:child_process";
+import { join } from "node:path";
 
 interface FormValues {
   repository: string;
@@ -22,108 +22,91 @@ interface FormValues {
 }
 
 export default function Command() {
-  const { push } = useNavigation();
   const preference = getPreferenceValues<Preferences.Clone>();
 
-  const [repository, setRepository] = useState("");
-  const [repositoryError, setRepositoryError] = useState<string | undefined>();
+  const [directory, setDirectory] = useState<string>("");
+  const [repository, setRepository] = useState<string>("");
 
-  const [directory, setDirectory] = useState("");
-  const [directoryError, setDirectoryError] = useState<string | undefined>();
-  const [executing, setExecuting] = useState(false);
+  const [directoryError, setDirectoryError] = useState("");
+  const [repositoryError, setRepositoryError] = useState("");
 
-  function validateRepository(repository: string) {
-    if (!repository) {
-      setRepositoryError("Repository is required");
-      return false;
-    }
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
 
-    setDirectoryError(undefined);
-    return true;
+  const { push } = useNavigation();
+
+  function validateFormValues(values: FormValues): Promise<boolean> {
+    return new Promise((resolve) => {
+      setDirectoryError("");
+      setRepositoryError("");
+
+      if (!values.repository) {
+        setRepositoryError("Repository is required");
+        return resolve(false);
+      }
+
+      if (!values.directory) {
+        setDirectoryError("Directory is required");
+        return resolve(false);
+      } else if (existsSync(values.directory)) {
+        setDirectoryError("Directory already exists");
+        return resolve(false);
+      }
+
+      return resolve(true);
+    });
   }
 
-  function validateDirectory(directory: string) {
-    if (!directory) {
-      setDirectoryError("Directory is required");
-      return false;
-    }
-
-    if (existsSync(directory)) {
-      setDirectoryError(
-        [
-          `Repository already cloned into`,
-          `-`.repeat(46),
-          `${directory}`,
-          `-`.repeat(46),
-          `You can clone to another directory by customizing it`,
-        ].join("\n"),
-      );
-
-      return false;
-    }
-
-    setRepositoryError(undefined);
-    return true;
+  function buildCommand(form: FormValues) {
+    return `git clone ${form.repository} ${form.directory}`;
   }
 
-  useEffect(() => {
-    if (!repository) {
+  async function handleExecuteClick(form: FormValues) {
+    if (running) {
       return;
     }
 
-    setDirectoryError(undefined);
-    setRepositoryError(undefined);
+    setError("");
+    setRunning(true);
 
-    if (repository.includes("github.com")) {
-      // git@github.com:jsonleex/leex.raycast.git
-      // https://github.com/jsonleex/leex.raycast.git
-      const [username, name] = repository
-        .replace(".git", "")
-        .replace("git@github.com:", "")
-        .replace("https://github.com/", "")
-        .split("/"); // [jsonleex, leex.raycast]
+    if (await validateFormValues(form)) {
+      const command = buildCommand(form);
 
-      const directory = join(preference.root, "github", username, name);
-      setDirectory(directory);
-      validateDirectory(directory);
-      return;
+      if (command) {
+        try {
+          await runCommand(command);
+          push(<Result directory={form.directory} repository={form.repository} />);
+        } catch (error) {
+          setError(String(error));
+          let message = "Clone Failed!";
+          if (error instanceof Error) {
+            const lines = error.message.split("\n");
+            message = lines.find((line) => line.startsWith("fatal:")) ?? lines[0] ?? message;
+          }
+          showToast({ title: "Error", message, style: Toast.Style.Failure });
+        }
+      }
     }
 
-    setRepositoryError("Invalid repository url");
-  }, [repository]);
-
-  async function executeCommand({ repository, directory }: FormValues) {
-    if (executing || !validateRepository(repository) || !validateDirectory(directory)) {
-      return;
-    }
-    setExecuting(true);
-    const command = `git clone ${repository} ${directory}`;
-    showToast({ style: Toast.Style.Animated, title: "Cloning...", message: "Please wait..." });
-    try {
-      await promisify(exec)(command);
-      showToast({ style: Toast.Style.Success, title: "Success", message: "Repo cloned!" });
-      push(<Result directory={directory} repository={repository} />);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `Something went wrong: ${error}`;
-      showToast({ style: Toast.Style.Failure, title: "Failed", message });
-    }
-    setExecuting(false);
+    setRunning(false);
   }
 
-  async function copyCommand({ repository, directory }: FormValues) {
-    const command = `git clone ${repository} ${directory}`;
-    Clipboard.copy(command);
-    showToast({ style: Toast.Style.Success, title: "Success", message: "Copied to clipboard!" });
+  async function handleCopyClick(form: FormValues) {
+    if (await validateFormValues(form)) {
+      const command = buildCommand(form);
+      if (command) {
+        await Clipboard.copy(command);
+      }
+    }
   }
 
   return (
     <Form
-      navigationTitle="Clone Repo"
-      isLoading={executing}
+      isLoading={running}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Execute Command" onSubmit={executeCommand} />
-          <Action.SubmitForm title="Copy Command" onSubmit={copyCommand} />
+          <Action.SubmitForm title="Execute Command" icon={Icon.Terminal} onSubmit={handleExecuteClick} />
+          <Action.SubmitForm title="Copy to Clipboard" icon={Icon.Clipboard} onSubmit={handleCopyClick} />
         </ActionPanel>
       }
     >
@@ -131,11 +114,17 @@ export default function Command() {
         id="repository"
         title="Repository"
         placeholder="Repository https or ssh url"
-        autoFocus={true}
         value={repository}
         error={repositoryError}
-        onBlur={() => validateRepository(repository)}
-        onChange={(value) => setRepository(value)}
+        onChange={(repository) => {
+          const directory = getDirectory(repository, preference.root) ?? "";
+          setDirectory(directory);
+          setRepository(repository);
+
+          if (directory) {
+            validateFormValues({ repository, directory });
+          }
+        }}
       />
 
       <Form.TextField
@@ -144,41 +133,49 @@ export default function Command() {
         placeholder="Directory to clone into"
         value={directory}
         error={directoryError}
-        onBlur={() => validateDirectory(directory)}
-        onChange={(value) => setDirectory(value)}
+        onChange={(directory) => {
+          setDirectory(directory);
+          directory && validateFormValues({ repository, directory });
+        }}
       />
+
+      <Form.Description text={error} />
     </Form>
   );
 }
 
-function Result({ directory, repository }: { directory: string; repository: string }) {
-  const preference = getPreferenceValues<Preferences.Clone>();
-  let markdown = [`# Repository cloned`, "", `- origin: \`${repository}\``, "", `- directory: \`${directory}\``].join(
-    `\n`,
-  );
+function Result(props: { directory: string; repository: string }) {
+  const editor = getPreferenceValues<Preferences.Clone>().editor;
 
-  const readme = join(directory, "README.md");
+  let markdown = [
+    "# Repo Cloned 🎉",
+    `- **Repository ➤** \`${props.repository}\``,
+    `- **Directory    ➤** \`${props.directory}\``,
+  ].join("\n");
+
+  const readme = join(props.directory, "README.md");
   if (existsSync(readme)) {
     markdown = readFileSync(readme, "utf-8");
   }
 
   return (
     <Detail
+      navigationTitle="Command Result"
       markdown={markdown}
       actions={
         <ActionPanel>
           <Action.Open
             title="Open in Editor"
-            target={directory}
-            application={preference.editor}
-            shortcut={{ modifiers: ["cmd"], key: "enter" }}
+            target={props.directory}
+            application={editor}
+            shortcut={{ modifiers: ["cmd"], key: "e" }}
           />
-          <Action.Open
+          <Action.ShowInFinder
             title="Open in Finder"
-            target={directory}
-            icon={Icon.Finder}
+            path={props.directory}
             shortcut={{ modifiers: ["cmd"], key: "o" }}
           />
+          <Action.OpenWith title="Open With" path={props.directory} />
         </ActionPanel>
       }
     />

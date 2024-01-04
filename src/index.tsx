@@ -1,9 +1,8 @@
-import { Action, ActionPanel, Icon, List, confirmAlert, getPreferenceValues } from "@raycast/api";
+import { Action, ActionPanel, Icon, List, confirmAlert, getPreferenceValues, trash } from "@raycast/api";
 import { glob } from "fast-glob";
 import { useCachedPromise } from "@raycast/utils";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
-import { execSync } from "node:child_process";
 
 export default function Command() {
   const preference = getPreferenceValues<Preferences.Index>();
@@ -26,7 +25,7 @@ export default function Command() {
         message: `Delete "${repo}"?`,
       })
     ) {
-      execSync(`rm -rf ${repo}`, { encoding: "utf-8" });
+      await trash(repo);
       state.revalidate();
     }
   }
