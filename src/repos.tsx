@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { homedir } from "node:os";
 
 export default function Command() {
-  const preference = getPreferenceValues<Preferences.Index>();
+  const preference = getPreferenceValues<Preferences.Repos>();
 
   const editor = preference.editor!;
   const directories = [preference.root];
@@ -41,6 +41,12 @@ export default function Command() {
             <ActionPanel>
               <Action.Open target={repo} application={editor} title={`Open in ${editor.name}`} />
               <Action.Open target={repo} application="Finder" title="Open in Finder" />
+              <Action
+                title="Refresh"
+                icon={Icon.RotateClockwise}
+                onAction={() => state.revalidate()}
+                shortcut={{ modifiers: ["cmd"], key: "r" }}
+              />
               <Action
                 title="Delete"
                 icon={Icon.Trash}

@@ -68,7 +68,7 @@
   ],
   "commands": [
     {
-      "name": "index",
+      "name": "repos",
       "title": "Repos",
       "description": "Show local git repos",
       "mode": "view"
